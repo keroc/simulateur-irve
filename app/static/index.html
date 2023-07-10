@@ -1,0 +1,49 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Configurateur de station</title>
+        <link rel="stylesheet" href="/static/general.css"/>
+        <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+        <script type="text/javascript" src="/static/jquery-3.6.3.min.js"></script>
+    </head>
+    <body>
+        <h1>Configurateur de station</h1>
+        <form id="search" action="/public">
+            <input type="text" id="addr" name="addr" placeholder="Rechercher une adresse">
+            <button id="ok" type="submit" disabled>Lancer la recherche</button><br/><br/>
+            - OU -<br/><br/>
+            <button id="geoloc" type="button">Me geolocaliser</button><br/><br/>
+
+            <label for="dist">Rayon d'analyse : </label>
+            <input type="number" id="dist" name="dist" min="1" max="100"  value="20"> Km
+        </form>
+        <script>
+            function geoloc(position) {
+                // Add hidden inputs to pass latitude and longitude
+                $('#search').append(`<input type="hidden" name="lat" value="${ position.coords.latitude }">`);
+                $('#search').append(`<input type="hidden" name="lon" value="${ position.coords.longitude }">`);
+                $('#search').submit();
+            }
+
+            if (navigator.geolocation) {
+                // Bind geoloc to the button
+                $("#geoloc").on('click', function () {
+                    navigator.geolocation.getCurrentPosition(geoloc);
+                });
+            } else {
+                $("#geoloc").prop('disabled', true);
+            }
+
+            // Only enable search if an address is written
+            $("#addr").on('input', function () {
+                $("#ok").prop('disabled', $('#addr').val().length == 0);
+            });
+
+            $("#search").on('submit', function () {
+                $("#ok").prop('disabled', true);
+                $("#geoloc").prop('disabled', true);
+                return true;
+            });
+        </script>
+    </body>
+</html>

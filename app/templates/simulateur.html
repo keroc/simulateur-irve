@@ -1,0 +1,440 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Simulateur de borne publique</title>
+        <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+        <link rel="stylesheet" href="/static/general.css"/>
+        <link rel="stylesheet" href="/static/leaflet/leaflet.css"/>
+		<!-- Make sure you put this AFTER Leaflet's CSS -->
+		<script type="text/javascript" src="/static/leaflet/leaflet.js"></script>
+        <script type="text/javascript" src="/static/jquery-3.6.3.min.js"></script>
+        <script type="text/javascript" src="/static/simulateur.js"></script>
+    </head>
+    <body>
+        <h1>Simulateur de borne publique</h1>
+
+        <div id='root_modal' class="modal">
+            <!-- Modal content -->
+            <div id="msg_box" class="modal-content"></div>
+        </div>
+
+        <div id="search">
+            <div id="search-center">
+                <label for="adress_bar">Adresse :</label>
+                <input id="adress_bar" type="text" placeholder="Taper une adresse ici...">
+            </div>
+            <div id="search-dist">
+                <label>Rayon de recherche :</label>
+                <input id="dist" type="number" min="1" max="100"  value="20"> Km
+            </div>
+            <div class="multibutton">
+                <button id="search_button" class="left-button">Chercher</button>
+                <button id="geoloc_button" class="right-button">
+                    <svg width="30" height="30">
+                        <circle cx="15" cy="15" r="12" stroke="white" stroke-width="3" fill-opacity="0"/>
+                        <circle cx="15" cy="15" r="3" fill="white" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div id="map"></div>
+        <div id="results" style="display: none;">
+            <div class="result_block">
+                <div class="result_data">
+                    ⚡ Energie de recharge annuelle estimée ⚡<br>
+                    <span class="big_number" id="all_energy">0 kWh</span>
+                </div>
+                <div class="result_sub_block">
+                    <div class="result_data">
+                        🏠 Dont charge des riverains 🏠<br>
+                        <span class="big_number" id="local_energy">0 kWh</span>
+                    </div>
+                    <div class="result_data">
+                        💼 Dont charge des trajets domicile-travail 💼<br>
+                        <span class="big_number" id="wf_energy">0 kWh</span>
+                    </div>
+                    <div class="result_data">
+                        🚗 Dont charge du trafic national 🚗<br>
+                        <span class="big_number" id="tmja_energy">0 kWh</span>
+                    </div>
+                </div>
+                <div class="result_sub_block">
+                    <button id="restart">Relancer</button>
+                </div>
+            </div>
+            <div class="result_block">
+                <h2>⚙ Paramètres</h2>
+                <div class="result_sub_block">
+                    <div class="result_data">
+                        <b>Paramètres généraux</b><br/><br/>
+                        <label for="charge_energy_gen_param">Energie moyenne d'une charge : </label><input type="number" id="charge_energy_gen_param" min="1" max="900"> KWh<br>
+                        <label for="ratio_home_charge_gen_param">Part des charges faites au domicile : </label><input type="number" id="ratio_home_charge_gen_param" min="0" max="100"> %<br>
+                        <label for="ratio_ve_hybrid_gen_param">Part des voitures électriques dans les véhicules rechargeables : </label><input type="number" id="ratio_ve_hybrid_gen_param" min="0" max="100"> %<br>
+                        <label for="conso_ve_gen_param">Consommation moyenne d'une voiture électrique : </label><input type="number" id="conso_ve_gen_param" min="0" max="900"> kWh/100km<br>
+                        <label for="conso_hybrid_gen_param">Consommation moyenne d'une voiture hybride rechargeable : </label><input type="number" id="conso_hybrid_gen_param" min="0" max="900"> kWh/100km
+                    </div>
+                    <div class="result_data">
+                        <b>Paramètres riverains</b><br/><br/>
+                            <label for="dist_per_year_loc_param">Distance annuelle moyenne : </label><input type="number" id="dist_per_year_loc_param" min="1" max="999000"> Km<br/>
+                            <label for="time_from_home_loc_param"></label>Temps max pour aller à la borne depuis son domicile : <input type="number" id="time_from_home_loc_param" min="1" max="90"> min<br/>
+                            <label for="ratio_home_street_loc_param">Probabilité de se charger sur la voirie : </label><input type="number" id="ratio_home_street_loc_param" min="0" max="100"> %
+                    </div>
+                    <div class="result_data">
+                        <b>Paramètres trafic national</b><br/><br/>
+                            <label for="ratio_ve_tmja_param">Part de véhicule rechargeable : </label><input type="number" id="ratio_ve_tmja_param" min="0" max="100"> %<br/>
+                    </div>
+                </div>
+            </div>
+            <div class="result_block">
+                <h2>⛽ Bornes</h2>
+                <table id="simulation_table">
+                    <tr>
+                        <th rowspan="2">Station simulée</th>
+                        <th>Puissance max</th>
+                        <th>Bonus temps</th>
+                    </tr>
+                    <tr>
+                        <td><input type="number" min="0" max="9000" id="sim_site_power"/> kW</td>
+                        <td><input type="number" min="0" max="120" id="sim_site_bonus"/> min</td>
+                    </tr>
+                </table>
+                <table id="sites_table"></table>
+            </div>
+            <div class="result_block">
+                <h2>📝 Détail des calculs</h2>
+                <div class="result_sub_block">
+                    <div class="result_data">
+                        <b>Détails simulation locale 🏠</b><br/><br/>
+                        Nombre de villes dans la zone : <span id="nb_cities_local_stats"></span><br/>
+                        Nombre de voitures immatriculées dans la zone : <span id="total_cars_local_stats"></span><br/>
+                        Dont véhicules électriques : <span id="total_ev_cars_local_stats"></span><br/>
+                        Et à proximité de la station : <span id="in_range_ev_cars_local_stats"></span><br/>
+                        Distance annuelle parcouru par ces véhicules : <span id="total_distance_local_stats"></span> km<br/>
+                        Soit en énergie : <span id="total_energy_local_stats"></span> kWh<br/>
+                        Dont recharge potentielle en voirie : <span id="street_energy_local_stats"></span> kWh<br/>
+                        Partagé avec d'autres stations locales : <span id="in_range_sites_local_stats"></span>
+                    </div>
+                    <div class="result_data">
+                        <b>Détails simulation trajet domicile-travail 💼</b><br/><br/>
+                        Trafic domcile-travail en véhicule électrique dans la zone : <span id="total_ev_traffic_wf_stats"></span> / an <br/>
+                        Dont traffic capté : <span id="captured_traffic_wf_stats"></span> / an <br/>
+                        Soit en distance par an : <span id="distance_wf_stats"></span> km
+                    </div>
+                    <div class="result_data">
+                        <b>Détails simulation trafic national 🚗</b><br/><br/>
+                        Trafic national dans la zone : <span id="total_traffic_tmja_stats"></span> / an<br/>
+                        Dont véhicules électriques : <span id="total_ev_traffic_tmja_stats"></span> / an<br/>
+                        Dont véhicules en itinérance (hors trajets locaux) : <span id="roaming_ev_traffic_tmja_stats"></span> / an<br/>
+                        Dont traffic capté : <span id="captured_traffic_tmja_stats"></span> / an<br/>
+                        Soit en distance par an : <span id="distance_tmja_stats"></span> km
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="footer"><a href="/static/sources.html">Liste des sources détaillées</a> | <a href="/list">Liste des simulations existantes</a></div>
+    </body>
+    <script>
+        /**************************************
+         * GLOBALS
+         * ************************************/
+        var sim = null;
+        var map = null;
+        var layerControl = null;
+
+        /**************************************
+         * CALLBACKS
+         * ************************************/
+        function start_cb() { $('.modal').css('display', 'block'); $('#results').css('display', 'none'); }
+        function status_text_cb(msg) { $('#msg_box').text(msg); }
+        function error_cb(err) { alert(`ERREUR [${err.type}] : ${err.error}`); $('.modal').css('display', 'none'); }
+        function end_cb() { $('.modal').css('display', 'none'); }
+
+        function area_loaded_cb(area) {
+            // Build the base layers
+			var stamen = L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under <a href="http://www.openstreetmap.org/copyright">ODbL</a>.'});
+			var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy <a href="http://openstreetmap.org">OpenStreetMap</a>'});
+
+            // Show the map
+            map = L.map('map', {
+				center: [area.lat, area.lon],
+				zoom: 10,
+				layers : [stamen]
+            });
+
+            // Build the simulation area
+            siteMarker = L.marker([area.lat, area.lon]).addTo(map);
+            zoneCircle = L.circle([area.lat, area.lon], {
+                color:"#e10000",
+                dashArray: "4",
+                fill:false,
+                radius: area.dist * 1000
+            }).addTo(map);
+
+            // Add controls
+            layerControl = L.control.layers({"Black & White": stamen, "OpenStreetMap": osm}).addTo(map);
+            L.control.scale().addTo(map);
+        }
+
+        function cities_loaded_cb(cities) {
+            // Add the cities to the map
+            var citiesLayer = L.geoJSON(cities, {
+                pointToLayer: function (feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            radius: 8,
+                            fillColor: "#ff7800",
+                            color: "#000",
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        });
+                },
+                style: function(feature) {
+                    return {
+                        color: "#0066af",
+                        fillColor: "#0066af",
+                        fillOpacity: 0.15,
+                        weight: 1
+                    }
+                },
+                onEachFeature: function(feature, layer) {
+                    layer.bindPopup(`<b>${feature.properties.name}</b><br/>population : ${feature.properties.population}<br/>Voitures rechargeables : ${feature.properties.nb_elec_cars}`);
+                }
+            }).addTo(map);
+
+            // Add controls
+            layerControl.addOverlay(citiesLayer, 'Villes');
+        }
+
+        function workfluxes_loaded_cb(wf) {
+            // Show the workfluxes
+            var workfluxesLayer = L.geoJSON(wf, {
+                style: function(feature) {
+                    return {
+                        color: "#FFCC33",
+                        opacity: Math.min(0.1*Number(feature.properties.nb_e_cars), 1),
+                        weight: 4
+                    }
+                },
+                onEachFeature: function(feature, layer) {
+                    layer.bindPopup(`<b>${feature.properties.name} : </b> ${feature.properties.traffic} VE /jour<br/>
+                                        ${Math.round(feature.properties.length)} km (${Math.round(feature.properties.time)} min)`);
+                }
+            }).addTo(map);
+
+            // Add controls
+            layerControl.addOverlay(workfluxesLayer, 'Trajets travail');
+        }
+
+        function tmja_loaded_cb(tmja) {
+            // Show the workfluxes
+            var tmjaLayer = L.geoJSON(tmja, {
+                style: function(feature) {
+                    return {
+                        color: "#EE0000",
+                        opacity: Math.min(0.1*Number(feature.properties.nb_e_cars), 1),
+                        weight: 4
+                    }
+                },
+                onEachFeature: function(feature, layer) {
+                    layer.bindPopup(`<b>${feature.properties.name} : </b> ${feature.properties.traffic} voitures / jour<br/>
+                                        ${Math.round(feature.properties.length)} km (${Math.round(feature.properties.time)} min)`);
+                }
+            }).addTo(map);
+
+            // Add controls
+            layerControl.addOverlay(tmjaLayer, 'Traffic national');
+        }
+
+        function charging_sites_loaded_cb(sites) {
+
+            var sitesLayer = L.geoJSON(sites, {
+                pointToLayer: function (feature, latlng) {
+                    let power_color = '#999999';
+                    if (feature.properties.max_power > 100) {
+                        power_color = '#00CC00';
+                    } else if (feature.properties.max_power > 22) {
+                        power_color = '#0000CC';
+                    }
+
+                    return L.circleMarker(latlng, {
+                        radius: 6,
+                        color: '#FF0000',
+                        weight: 2,
+                        fillColor:power_color,
+                        fillOpacity: 0.8,
+                        opacity: 1
+                    })
+                },
+                onEachFeature: function(feature, layer) {
+                    layer.bindPopup(`<b>${feature.properties.name}</b> (${feature.properties.cpo})<br>
+                    Points de charge : ${feature.properties.nb_points} (max ${feature.properties.max_power} kW)<br>
+                    source : ${feature.properties.data_source}<br>
+                    infos : ${feature.properties.cost}<br>
+                    <a onclick="scrollToAnchor('${feature.properties.id}')">Accéder aux options</a>`);
+                }
+            }).addTo(map);
+
+            // Add controls
+            layerControl.addOverlay(sitesLayer, 'Stations de recharge');
+        }
+
+        function simulation_available_cb(simulation) {
+            sim = simulation;
+
+            // Update big numbers
+            let all_energy = sim.results.local + sim.results.workflux + sim.results.tmja; 
+            $('#all_energy').text(`${Math.round(all_energy).toLocaleString()} kWh`);
+            $('#local_energy').text(`${Math.round(sim.results.local).toLocaleString()} kWh`);
+            $('#wf_energy').text(`${Math.round(sim.results.workflux).toLocaleString()} kWh`);
+            $('#tmja_energy').text(`${Math.round(sim.results.tmja).toLocaleString()} kWh`);
+
+            // Update parameters
+            $("#charge_energy_gen_param").attr('value', sim.parameters.general.charge_energy);
+            $("#ratio_home_charge_gen_param").attr('value', sim.parameters.general.ratio_home_charge*100);
+            $("#ratio_ve_hybrid_gen_param").attr('value', sim.parameters.general.ratio_ve_hybrid*100);
+            $("#conso_ve_gen_param").attr('value', sim.parameters.general.conso_ve);
+            $("#conso_hybrid_gen_param").attr('value', sim.parameters.general.conso_hybrid);
+            $("#dist_per_year_loc_param").attr('value', sim.parameters.local.dist_per_year);
+            $("#time_from_home_loc_param").attr('value', sim.parameters.local.time_from_home);
+            $("#ratio_home_street_loc_param").attr('value', sim.parameters.local.ratio_home_street*100);
+            $("#ratio_ve_tmja_param").attr('value', sim.parameters.tmja.ratio_ve*100);
+
+            // Update charging sites
+            $('#sim_site_power').attr('value', sim.sim_site.max_power);
+            $('#sim_site_bonus').attr('value', sim.sim_site.time_bonus);
+            table_html = '<tr><th>Station</th><th>Puissance max</th><th>Activée</th><th>Bonus temps</th></tr>';
+            for(let i=0; i<sim.sites.length; i++) {
+                table_html += `<tr id="${sim.sites[i].id}">
+                    <td>${sim.sites[i].name}</td>
+                    <td><input type="number" min="0" max="9000" id="${sim.sites[i].id}_power" value="${sim.sites[i].max_power}"/> kW</td>
+                    <td><input type="checkbox" id="${sim.sites[i].id}_enabled" ${sim.sites[i].enabled ? 'checked' : ''}/></td>
+                    <td><input type="number" min="0" max="120" id="${sim.sites[i].id}_bonus" value="${sim.sites[i].time_bonus}"/> min</td>
+                    </tr>`;
+            }
+            $('#sites_table').html(table_html);
+
+            // Update stats
+            $("#nb_cities_local_stats").text(`${Math.round(sim.stats.local.nb_cities).toLocaleString()}`);
+            $("#total_cars_local_stats").text(`${Math.round(sim.stats.local.total_cars).toLocaleString()}`);
+            $("#total_ev_cars_local_stats").text(`${Math.round(sim.stats.local.total_ev_cars).toLocaleString()}`);
+            $("#in_range_ev_cars_local_stats").text(`${Math.round(sim.stats.local.in_range_ev_cars).toLocaleString()}`);
+            $("#total_distance_local_stats").text(`${Math.round(sim.stats.local.total_distance).toLocaleString()}`);
+            $("#total_energy_local_stats").text(`${Math.round(sim.stats.local.total_energy).toLocaleString()}`);
+            $("#street_energy_local_stats").text(`${Math.round(sim.stats.local.street_energy).toLocaleString()}`);
+            $("#in_range_sites_local_stats").text(`${Math.round(sim.stats.local.in_range_sites).toLocaleString()}`);
+            $("#total_ev_traffic_wf_stats").text(`${Math.round(sim.stats.workflux.total_ev_traffic).toLocaleString()}`);
+            $("#captured_traffic_wf_stats").text(`${Math.round(sim.stats.workflux.captured_traffic).toLocaleString()}`);
+            $("#distance_wf_stats").text(`${Math.round(sim.stats.workflux.distance).toLocaleString()}`);
+            $("#total_traffic_tmja_stats").text(`${Math.round(sim.stats.tmja.total_traffic).toLocaleString()}`);
+            $("#total_ev_traffic_tmja_stats").text(`${Math.round(sim.stats.tmja.total_ev_traffic).toLocaleString()}`);
+            $("#roaming_ev_traffic_tmja_stats").text(`${Math.round(sim.stats.tmja.roaming_ev_traffic).toLocaleString()}`);
+            $("#captured_traffic_tmja_stats").text(`${Math.round(sim.stats.tmja.captured_traffic).toLocaleString()}`);
+            $("#distance_tmja_stats").text(`${Math.round(sim.stats.tmja.distance).toLocaleString()}`);
+
+            // Show results
+            $('#results').css('display', 'block');
+
+        }
+
+        /**************************************
+         * SIMULATION STARTER
+         * ************************************/
+        function start_simulation(coord, dist) {
+
+            if (map !== null) {
+                map.off();
+                map.remove();
+            }
+
+            // Get back the distance if needed
+            if (dist === undefined) {
+                dist = parseInt($('#dist').val());
+            }
+            get_simulation_data(coord, dist, {
+                start: start_cb,
+                end: end_cb,
+                status_text:status_text_cb,
+                error: error_cb,
+                area_loaded: area_loaded_cb,
+                cities_loaded: cities_loaded_cb,
+                workfluxes_loaded: workfluxes_loaded_cb,
+                tmja_loaded: tmja_loaded_cb,
+                charging_sites_loaded: charging_sites_loaded_cb,
+                simulation_available: simulation_available_cb
+            });
+            
+        }
+
+        /**************************************
+         * BINDING EVENTS
+         * ************************************/
+        $('#search_button').on('click', function() {
+            geocode($('#adress_bar').val(),
+            function(coord) {
+                start_simulation(coord);
+            },
+            function() {
+                alert(`Erreur lors de la recherche de l'adresse`);
+            })
+        });
+
+        if (navigator.geolocation) {
+            // Bind geoloc to the button
+            $("#geoloc_button").on('click', function () {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    start_simulation({lat: position.coords.latitude, lon: position.coords.longitude});
+                });
+            });
+        } else {
+            $("#geoloc_button").prop('disabled', true);
+        }
+
+        $('#restart').on('click', function() {
+            // Update all simulation data
+
+            // Parameters
+            sim.parameters.general.charge_energy = $("#charge_energy_gen_param").val();
+            sim.parameters.general.ratio_home_charge = $("#ratio_home_charge_gen_param").val() / 100;
+            sim.parameters.general.ratio_ve_hybrid = $("#ratio_ve_hybrid_gen_param").val() / 100;
+            sim.parameters.general.conso_ve = $("#conso_ve_gen_param").val();
+            sim.parameters.general.conso_hybrid = $("#conso_hybrid_gen_param").val();
+            sim.parameters.local.dist_per_year = $("#dist_per_year_loc_param").val();
+            sim.parameters.local.time_from_home = $("#time_from_home_loc_param").val();
+            sim.parameters.local.ratio_home_street = $("#ratio_home_street_loc_param").val() / 100;
+            sim.parameters.tmja.ratio_ve = $("#ratio_ve_tmja_param").val() / 100;
+            sim.parameters.tmja.stop_need_prob = $("#stop_need_prob_tmja_param").val() / 100;
+
+            // Simulated site
+            sim.sim_site.max_power = $('#sim_site_power').val();
+            sim.sim_site.time_bonus = $('#sim_site_bonus').val();
+
+            // All other charging stations
+            for(let i=0; i<sim.sites.length; i++) {
+                sim.sites[i].max_power = $(`#${sim.sites[i].id}_power`).val();
+                sim.sites[i].time_bonus = $(`#${sim.sites[i].id}_bonus`).val();
+                sim.sites[i].enabled = $(`#${sim.sites[i].id}_enabled`).is(":checked");
+            }
+
+            // Simulate back everything
+            sim.simulate();
+            simulation_available_cb(sim);
+        });
+
+        function scrollToAnchor(id){
+            $('#sites_table > tr').each(function()
+                {
+                    $(this).css("background-color", ($(this).attr('id') == id) ? "yellow" : "");
+                });
+            var tdTag = $(`#${id}`);
+            $('html,body').animate({scrollTop: tdTag.offset().top},'slow');
+        }
+
+        /******************************
+         * CHECK URL PARAMETERS
+         ******************************/
+         let searchParams = new URLSearchParams(window.location.search);
+         if(searchParams.has('lat') && searchParams.has('lon') && searchParams.has('dist')) {
+            start_simulation({lat: searchParams.get('lat'), lon: searchParams.get('lon')}, searchParams.get('dist'));
+         }
+    </script>
+</html>
